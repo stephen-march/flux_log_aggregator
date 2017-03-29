@@ -1,0 +1,77 @@
+comment (As fluxes)
+
+writefile (AsFlux; "#Cell=As")
+writefile (AsFlux; "#AsShutter=open")
+eval t_AsSUB = 400
+writefile (AsFlux; "#AsSUB=", t_AsSUB)
+eval t_AsCracker = 850
+writefile (AsFlux; "#AsCracker=", t_AsCracker)
+writefile (AsFlux; "#AsValve	mBG	mP	BEP")
+
+eval t_AsValve_start = 200
+
+! calculate
+eval t_AsValve = t_AsValve_start - 5
+
+! for valve positions below 75 mil,
+! open past then close down to it
+repeat 3
+  eval t_AsValve = t_AsValve + 5
+  repeat 4
+    open Al,Ga
+    wait 20
+    close Al,Ga
+    wait 25
+    eval mBG=bf
+!    t AsValve 80
+!    wait 3
+    t AsValve = t_AsValve
+    wait 2
+    open As
+    wait 25
+    eval mP=bf
+    eval BEP = mP - mBG
+    writefile (AsFlux; t_AsValve, mBG, mP, BEP)
+    t AsValve 0
+    close As
+  er
+er
+
+comment (As fluxes)
+
+writefile (AsFlux; "#Cell=As")
+writefile (AsFlux; "#AsShutter=open")
+eval t_AsSUB = 400
+writefile (AsFlux; "#AsSUB=", t_AsSUB)
+eval t_AsCracker = 850
+writefile (AsFlux; "#AsCracker=", t_AsCracker)
+writefile (AsFlux; "#AsValve	mBG	mP	BEP")
+
+eval t_AsValve_start = 225
+
+! calculate
+eval t_AsValve = t_AsValve_start - 10
+
+! for valve positions below 75 mil,
+! open past then close down to it
+repeat 3
+  eval t_AsValve = t_AsValve + 10
+  repeat 4
+    open Al,Ga
+    wait 20
+    close Al,Ga
+    wait 25
+    eval mBG=bf
+!    t AsValve 80
+!    wait 3
+    t AsValve = t_AsValve
+    wait 2
+    open As
+    wait 25
+    eval mP=bf
+    eval BEP = mP - mBG
+    writefile (AsFlux; t_AsValve, mBG, mP, BEP)
+    t AsValve 0
+    close As
+  er
+er

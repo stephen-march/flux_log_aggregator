@@ -1,0 +1,25 @@
+# EXTRAPOLATION DATA FILE
+# extrapolation_values.txt
+#
+# These are the deisred valve positions in mils (As,Sb) and temps in degrees C (group IIIs, rare earths, and Bi)
+# to be used for the linear (As,Sb) and exponential (group IIIs, rare earths, and Bi) fits
+# so that data can be compared equally as a function of time
+#
+
+# As and Sb
+As valve position = 200
+Sb valve position = 200
+
+# Group IIIs
+Al temp = 1150
+B temp = 999
+Ga temp = 1030
+In temp = 900
+
+# Bi
+Bi temp = 600
+
+# rare earth
+Er temp = 1000
+La temp = 1000
+Lu temp = 1000
