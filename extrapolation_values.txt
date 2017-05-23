@@ -5,21 +5,39 @@
 # to be used for the linear (As,Sb) and exponential (group IIIs, rare earths, and Bi) fits
 # so that data can be compared equally as a function of time
 #
+# Keep the format below or elese it cannot be correctly read by the flux aggregator script!
+#
+# The date range returns flux data between the dates specified
+#
+# The r2 value is the R^2 regression fitting lower limit. It is used to save data that produces regressions
+# that are greater than or equal to the r2 value. 
+#
+# If you decide to add any new elements, the regex commands in the flux aggregator script must be updated and
+# you must pick the type of curve fitting (exponential vs. linear) to perform. This resides in the
+# 'printing a hash and curve fitting' section of the script.
+#
+
+# Date range (YYYYMMDD)
+Start date = 20050101 
+End date = 20990101
+
+# Extrapolation limits
+r2 = 0.985
 
 # As and Sb
-As valve position = 200
-Sb valve position = 200
+As valve position = 200.0
+Sb valve position = 200.0
 
 # Group IIIs
-Al temp = 1150
-B temp = 999
-Ga temp = 1030
-In temp = 900
+Al temp = 1150.0
+B temp = 999.0
+Ga temp = 1030.0
+In temp = 900.0
 
 # Bi
-Bi temp = 600
+Bi temp = 600.0
 
 # rare earth
-Er temp = 1000
-La temp = 1000
-Lu temp = 1000
+Er temp = 1000.0
+La temp = 1000.0
+Lu temp = 1000.0
