@@ -191,7 +191,7 @@ sub ReadExtrapolationFile{
 	my $element;
 	my $value;
 	my $r2;
-	open(inputvaluestest, ">inputvaluestest.txt");
+	open(inputvaluestest, "<inputvaluestest.txt");
 	
 	while (my $line = <inputfile>) {													# reads through each line of the file
 	
@@ -511,7 +511,8 @@ my $r2Test = 0.985;
 #                                       === Code Body === 	                                                       #
 ####################################################################################################################
 
-system("cls"); # clears command line screen
+system("cls"); # clears command line screen in windows
+# system("clear"); #clears the command line in unix
 
 
 # Determine input file with extrapolation values
