@@ -1,7 +1,23 @@
+function [] = plot_element_data( BEPorTemp )
+%plot_element_data.m plots the output from flux_log_aggregator.pl
+%   input: BEPorTemp -- =1 plot the BEP vs. time for a fixed temp
+%                       =2 plot the temp vs. time for a fixed BEP
+
 % user variables
 col_date = 1;
 col_testtemp = 2;
 col_BEP = 3;
+
+% select the column to use for plotting and for labeling
+if BEPorTemp == 1
+    col_select = col_BEP;
+    col_label = col_testtemp;
+elseif BEPorTemp == 2
+    col_select = col_testtemp;
+    col_label = col_BEP;
+else
+    warning('an incorrect BEPorTemp value was provided!');
+end
 
 % find the files in the directory that end with -filtered.txt
 struct_pattern = '*-filtered.txt';
@@ -33,18 +49,32 @@ for i=1:length(files)
     % plot data as a scatter plot
     figure;
     format_in = 'yyyymmdd'; % pick the format of the input text files
-    dn=datenum(num2str(cur_element_data(:,1)),format_in); % convert the dates 
+    dn=datenum(num2str(cur_element_data(:,col_date)),format_in); % convert the dates 
                                                           % to something the computer 
                                                           % can interpret as dates
-    scatter(dn,cur_element_data(:,col_BEP));
+    scatter(dn,cur_element_data(:,col_select));
     datetick('x','keepticks','keeplimits');     % set the x-axis to be a date format
-    
-    
-    % later parameters for making good figures
+       
+    % set the x, y, and title info for the plot
+    title(chart_title);
+    curval = num2str(cur_element_data(1,col_label));
+    if BEPorTemp == 1
+        ylabel('BEP'); 
+        title(strcat(chart_title,{' '},curval,{' '},'C or mil'));
+        testtemp_str = strcat(chart_title,{' '},curval,{' '},'C or mil');
+    end
+    if BEPorTemp == 2
+        ylabel('temp (C) or valve position (mil)');    
+        title(strcat(chart_title,{' '},curval,{' '},'BEP'));
+        testtemp_str = strcat(chart_title,{' '},curval,{' '},'BEP');
+    end
+    xlabel('Date');
+
+    % parameters for making good figures
     max_x = max(dn);
     min_x = min(dn);
-    max_y = max(cur_element_data(:,col_BEP));
-    min_y = min(cur_element_data(:,col_BEP));
+    max_y = max(cur_element_data(:,col_select));
+    min_y = min(cur_element_data(:,col_select));
     delta_x = max_x - min_x;
     delta_y = max_y - min_y;
     prefactor = 0.9;
@@ -53,17 +83,9 @@ for i=1:length(files)
     pos_x = x_scaling;
     pos_y = y_scaling;
     
-    % set the x, y, and title info for the plot
-    title(chart_title);
-    ylabel('BEP');
-    xlabel('Date');
-    
-    
     % add a label to the plot so we know what it is
-     temperature = num2str(cur_element_data(1,col_testtemp));
-     testtemp_str = strcat(chart_title,{' '},temperature,{' '},'C');
-     str = {testtemp_str};
-     text(pos_x,pos_y,str{1})
-    
-    
+    %str = {testtemp_str};
+    %text(pos_x,pos_y,str{1}) 
+end
+
 end

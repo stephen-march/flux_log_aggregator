@@ -20,21 +20,27 @@ open(extrapolationoutputfiltered, "<extrapolation_aggregate_filtered.txt");					
 #open(arrheniusfits, "<arrhenius_fits.txt");												# captures only the Arrhenius fitting data
 #open(arrheniusfitsfiltered, "<arrhenius_fits_filtered.txt");								# only keeps the Arrhenius data for a "good" curve fit
 
+
 my $appendString = "-filtered.txt";		# append to the end of each new file generated
 my $newFilename;
 my $lastElement = "ZZ";
+
+
+# Example of input lines:
+# element	date	test temp/valve position	test BEP	R^2	a	b	sublimator temp (C)	cracker temp (C)
+# Al	2017-01-07	1150	1.17740328430162e-007	0.999402404919561	10.0100564866362	-36951.863085659
+my $reLineWholeTemp = qr/(\D{2})\s+(\d{4}\-\d{2}\-\d{2})\s+(\d+)\s+(\d+\.\d+[eE]\-\d+)\s+(\d\.\d+)/;			# input temp is a whole number, BEP output is decimal
+my $reLineDecimalTemp = qr/(\D{2})\s+(\d{4}\-\d{2}\-\d{2})\s+(\d+\.\d+)\s+(\d+\.\d+[eE]\-\d+)\s+(\d\.\d+)/;		# input temp is a decimal number, BEP output is decimal
+my $reLineWholeBEP = qr/(\D{2})\s+(\d{4}\-\d{2}\-\d{2})\s+(\d+\.\d+)\s+(\d+[eE]\-\d+)\s+(\d\.\d+)/;			# input BEP is a whole number temp output is decimal
+my $reLineDecimalBEP = qr/(\D{2})\s+(\d{4}\-\d{2}\-\d{2})\s+(\d+\.\d+)\s+(\d+\.\d+[eE]\-\d+)\s+(\d\.\d+)/;		# input BEP is a decimal number, temp output is decimal
 
 # read through the file and save off the individual element data in a .csv
 while (my $line = <extrapolationoutputfiltered>) {
 	
 	chomp($line);		# segments the file based on white space	
-
-	# Example of input lines:
-	# element	date	test temp/valve position	test BEP	R^2	a	b	sublimator temp (C)	cracker temp (C)
-	# Al	2017-01-07	1150	1.17740328430162e-007	0.999402404919561	10.0100564866362	-36951.863085659
-	my $reLine = qr/(\D{2})\s+(\d{4}\-\d{2}\-\d{2})\s+(\d+)\s+(\d+\.\d+e\-\d+)\s+(\d\.\d+)/;
+	#print "line: $line\n";
 	
-	if ($line =~ $reLine) {
+	if (($line =~ $reLineWholeTemp) or ($line =~ $reLineDecimalTemp) or ($line =~ $reLineWholeBEP) or ($line =~ $reLineDecimalBEP) ) {
 		
 		my $element = $1;
 		my $date = $2;

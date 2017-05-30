@@ -30,10 +30,11 @@ print "# \n";
 print "# flux_log_aggregator.pl\n";
 print "# \n";
 print "# Parses through AMBER log files to collect flux data based on the element and date.\n";
-print "# It calculated the average BEP for a given temp/valve position for that date. Output is stored in log_aggregate.txt\n";
-print "# \n";
+print "# It calculated the average BEP for a given temp/valve position or temp/valve position for a given BEP for that date.\n";
+print "# Output is stored in fluxlog_aggregate.txt\n";
 print "# User can provide an optional input file with extrapolation values. If no file is provided, this script automatically\n";
 print "# uses extrapolation_values.txt\n";
+print "# The user MUST follow the same format as extrapolation_values.txt in order to use the script (Sorry! I'm limited by regex.)\n";
 print "# \n";
 print "# As and Sb values undergo linear interpolation to calculate the value at 160 mils and 140 mils, repectively.\n";
 print "# The Group IIIs, Bi, and rare earth materials undergo exponential interpolation for a set of values.\n";
@@ -41,11 +42,17 @@ print "# The interpolated values are calculated can be used to assess if source 
 print "# \n";
 print "# === Output files that include fitting data ===\n";
 print "#   	extrapolation_aggregate.txt 	-->	includes the element, date, test temp/valve position, test BEP, R^2, \n";
-print "#									linear fitting parameters, sublimator temp, and cracker temp\n";
+print "#									linear fitting parameters, sublimator temp, and cracker temp.\n";
+print "#   	extrapolation_aggregate_filtered.txt 	-->	same as extrapolation_aggregate.txt but only contains data for \n";
+print "#												R^2 values that are above the user-defined R^2 value in the input file\n";
 print "#	full_regression_report.txt		-->	Raw output from the script subroutines with the individual terms used to perform\n";
 print "#									the regression as well as the Arrhenius fitting terms for non-valved-cracker sources\n";
 print "#	arrhenius_fits.txt				-->	element, date, Amplitude, activation energy (eV), and R^2 for a given Arrhenius fit\n";
 print "#									Obviously this is only used for non-valved-cracker sources\n";
+print "#   	arrhenius_fits_filtered.txt 	-->	same as arrhenius_fits.txt but only contains data for \n";
+print "#									R^2 values that are above the user-defined R^2 value in the input file\n";
+print "#   	fluxlog_warning_log.txt 	-->	used to print messages for debugging. It's contents are not particularly useful unless\n";
+print "#									you add a specific message during testing\n";
 print "# \n";
 print "# Note: this script is useful to assess the status of materials across growth campaigns,\n";
 print "# however, values may change slightly between each campaign and must be interpreted appropriately\n";
@@ -56,9 +63,7 @@ print "# - Option for multiple fitting temperatures/positions, e.g. test at 150,
 print "#\n";
 die "help command was activated";
 }
-#### TODO ####
-# test on unix system
-#
+
 
 ####################################################################################################################
 #                                       === Subroutines === 	                                                   #
@@ -183,28 +188,38 @@ sub GetDate{
 
 sub ReadExtrapolationFile{
 
+	# Collect the user-defined fitting parameters from the input file
+
 	my $fh = $_[0];																		# file handle for input file name
 	open(inputfile, "<$fh");															# input file, set as an input arg later
 
-	my %valveTempHash;
+	my %valuesHash;
 	my %dateRangeHash;
 	my $element;
 	my $value;
 	my $r2;
+	my $BEPorTemp = "ZZ";
+	my $BEPorTempValue = 0;
+	
 	open(inputvaluestest, "<inputvaluestest.txt");
 	
 	while (my $line = <inputfile>) {													# reads through each line of the file
 	
 		chomp($line);																	# segments the file based on white space	
-
+		
 		# Regex patterns for the input file
 		my $restartDate = qr/Start date\s+=\s+(\d{8})/;									# example: Start date = 20170115 
 		my $reendDate = qr/End date\s+=\s+(\d{8})/;										# example: End date = 20170125
-		my $reCrackerWholeNumber = qr/(\D+) valve position = (\d+)/;					# example: As valve position = 200
-		my $reCrackerDecimal = qr/(\D+) valve position = (\d+\.\d+)/;					# example: As valve position = 200.0
-		my $reCellWholeNumber = qr/(\D+) temp = (\d+)/;									# example: Ga temp = 1030
-		my $reCellDecimal = qr/(\D+) temp = (\d+\.\d+)/;								# example: Ga temp = 1030.0
-		my $rer2 = qr/r2\s+\=\s+(\d\.\d+)/;												# example: 0.985
+		my $reBEPorTemp = qr/BEPorTemp\s+=\s+(\D{3,4})/;								# example: BEPorTemp = Temp
+		my $reCrackerWholeNumber = qr/(\D+) valve position\s+=\s+(\d+)/;				# example: As valve position = 200
+		my $reCrackerDecimal = qr/(\D+) valve position\s+=\s+(\d+\.\d+)/;				# example: As valve position = 200.0
+		my $reCellWholeNumber = qr/(\D+) temp\s+=\s+(\d+)/;								# example: Ga temp = 1030
+		my $reCellDecimal = qr/(\D+) temp\s+=\s+(\d+\.\d+)/;							# example: Ga temp = 1030.0
+		my $rer2 = qr/r2\s+\=\s+(\d\.\d+)/;												# example: r2 = 0.985
+		my $reFluxDecimal = qr/(\D+)\s+flux\s+=\s+(\d+\.\d+[Ee]\-\d+)/;					# example: Ga flux = 1.07E-6
+		my $reFluxWhole = qr/(\D+)\s+flux\s+=\s+(\d+[Ee]\-\d+)/;						# example: Ga flux = 1E-6
+		#my $reFlux = qr/(\D+)\s+flux\s+=\s+(\d+\.\d+E\-\d+)/;							# example: Ga flux = 1.07E-6
+		
 		
 		# Save off start date
 		if ($line =~ $restartDate){
@@ -222,21 +237,48 @@ sub ReadExtrapolationFile{
 		if ($line =~ $rer2){
 			$r2 = $1;
 		}	
+
+		if ($line =~ $reBEPorTemp){
+			my $BEPorTemp = $1;
+			
+			if ($BEPorTemp =~ m/BEP/i){
+				$BEPorTempValue = 1;
+				print warninglog "BEPorTemp: $BEPorTemp\n";
+			}
+			
+			if ($BEPorTemp =~ m/Temp/i){
+				$BEPorTempValue = 2;
+				print warninglog "BEPorTemp: $BEPorTemp\n";
+			}
+		}		
+		
 		
 		# Save off extrapolation valved-cracker positions and cell temperature data
-		if (($line =~ $reCrackerWholeNumber) or ($line =~ $reCrackerDecimal) or ($line =~ $reCellWholeNumber) or ($line =~ $reCellDecimal)){
+		if (($BEPorTempValue == 1) and (($line =~ $reCrackerWholeNumber) or ($line =~ $reCrackerDecimal) or ($line =~ $reCellWholeNumber) or ($line =~ $reCellDecimal))){
+		#if ((($line =~ $reCrackerWholeNumber) or ($line =~ $reCrackerDecimal) or ($line =~ $reCellWholeNumber) or ($line =~ $reCellDecimal))){
 			$element = $1;
 			$value = $2;
-			$valveTempHash{$element} = $value;
+			$valuesHash{$element} = $value;
 			print inputvaluestest  "element: $element\tvalue: $value\n";
+			print warninglog "element: $element\tvalue: $value\tBEPorTemp: $BEPorTemp\n";
 		}
 		
+		if (($BEPorTempValue == 2) and (($line =~ $reFluxDecimal) or ($line =~ $reFluxWhole))){
+		#if (($line =~ $reFlux)){
+			$element = $1;
+			$value = $2;
+			$valuesHash{$element} = $value;
+			print inputvaluestest  "element: $element\tvalue: $value\n";
+			print warninglog "element: $element\tvalue: $value\tBEPorTemp: $BEPorTemp\n";
+		}		
+		
 			
+		
 	}
 	
 	close(inputfile);
 	
-	return (\%valveTempHash,\%dateRangeHash,$r2);											# returns hashes (in reference form) of the input values and dates
+	return (\%valuesHash,\%dateRangeHash,$r2,$BEPorTempValue);											# returns hashes (in reference form) of the input values and dates
 
 }
 
@@ -375,31 +417,77 @@ sub LinearInterpolation {
 	return $testY;
 }
 
+sub LinearInterpolationInverted {
+
+	# Perform linear interpolation following the form y = a + b*x
+	# In this case, the x value is a test value specified by the user, e.g. valve position or 1/T of a cell
+	
+	my($a,$b,$testY) = @_;
+
+	my $testX = ($testY - $a) / $b;
+	return $testX;
+}
+
 sub ExponentialInterpolation {
 
 	# Perform exponential regression by first converting the data into a linear format using 1/T
 	# to fit to Arrhenius model.
-	# Next, exponentiate the result 
+	# Fit temperatures/valve positions to a specific BEP (or vice versa depending on user input file)
 
 	my @x = @{$_[0]}; # input x array
 	my @y = @{$_[1]}; # input y array
-	my $testX = $_[2]; # test x value
+	my $testValue = $_[2]; # test value either a temperature or a BEP
+	my $invertFit = $_[3]; # 1 = fit BEP using some input temp, 2 = fit temp using some input BEP
+	print "testValue: $testValue\n";
+	
+	my $outputTest;
 	
 	# Get natural log linear regression values
 	my ($a,$b,$r2) = ExponentialRegression(\@x,\@y);
 	
-	# Find fitted Arrhenius value for some temperature in Kelvin
-	my $invertedTestX = 1/$testX;											# invert for arrhenius fitting
-	my $testY = LinearInterpolation($a,$b,$invertedTestX);
+	# Find BEP for a given temperature
+	if ($invertFit == 1){
+
+		# Find fitted Arrhenius value for some temperature in Kelvin
+		my $invertedTestX = 1/$testValue;											# invert for arrhenius fitting
+		my $testY = LinearInterpolation($a,$b,$invertedTestX);
 	
-	# Save off linear fitting data
-	print fullregressionreport "testY: $testY\ttestX: $testX\n";
+		# Exponentiate the data and save it
+		my $expY = exp($testY);
+		print fullregressionreport "testY: $testY ---> exp(testY): $expY\n";
+
+		# Save off linear fitting data
+		print fullregressionreport "testY: $testY\ttestX: $testValue\n";		
+		
+		$outputTest = $expY;
+
+	}
 	
-	# Exponentiate the data and save it
-	my $expY = exp($testY);
-	print fullregressionreport "testY: $testY ---> exp(testY): $expY\n";
+	# Find temperature for a given BEP
+	elsif ($invertFit == 2){
 	
-	return ($expY,$a,$b,$r2);	
+		# Find fitted Arrhenius value for some temperature in Kelvin		
+		my $logY = log($testValue);		# find ln(BEP) to use for the fitting
+		my $invertedTemp = LinearInterpolationInverted($a,$b,$logY);
+		
+		# Invert temp, and convert Kelvin to Celcius
+		my $newTempKelvin = 1/$invertedTemp;
+		my $conversionFactor = 273.15;
+		my $newTempCelcius = $newTempKelvin - $conversionFactor;
+		
+		print fullregressionreport "invertedTemp (1/K): $invertedTemp ---> newTempCelcius: $newTempCelcius\n";
+
+		# Save off linear fitting data
+		print fullregressionreport "testY: $logY\ttestX: $invertedTemp\n";	
+		
+		$outputTest = $newTempKelvin;
+	}
+	else{
+		$outputTest = 0;
+		print fullregressionreport "ERROR: User did not specify fitting to a BEP or a temperature/valve position!!!";
+	}
+
+	return ($outputTest,$a,$b,$r2);	
 
 }
 
@@ -448,6 +536,17 @@ sub CelciusToKelvinScalar	{
 	return ($newVal);
 }
 
+sub KelvinToCelciusScalar	{
+
+	# Convert a scalar from Kelvin to Celcius
+
+	my $originalTemp = $_[0]; 					# input temp in Kelvin
+	my $conversionFactor = 273.15;
+	my $newVal = $originalTemp - $conversionFactor;
+	
+	return ($newVal);
+}
+
 sub ArrheniusTerms	{
 	
 	# Calculate Arrhenius model fitting terms for cells
@@ -461,6 +560,8 @@ sub ArrheniusTerms	{
 	return ($amplitude,$activationEnergy);
 
 }
+
+
 	
 ####################################################################################################################
 #                                       === Variables === 	                                                       #
@@ -506,6 +607,7 @@ my $KtoCConversion = 273.15;
 my $minAsValvePosition = 160; 		# don't fit any As data below this valve position
 my $minSbValvePosition = 140; 		# don't fit any Sb data below this valve position
 my $r2Test = 0.985;
+my $BEPorTemp;
 
 ####################################################################################################################
 #                                       === Code Body === 	                                                       #
@@ -523,16 +625,18 @@ if (not defined $extrapolationInputFile) {
   warn "No input file provided, so looking for \"extrapolation_values.txt\"\n";
   $extrapolationInputFile = "extrapolation_values.txt";
   $r2Test = 0.985;
+  $BEPorTemp = 2; # selecting temperature curve fitting
 }
 
 # Collect extrapolation values from user's input file
-my ($tempHashRef,$dateRangeHashRef,$r2Test) = ReadExtrapolationFile($extrapolationInputFile);
+my ($tempHashRef,$dateRangeHashRef,$r2Test,$BEPorTemp) = ReadExtrapolationFile($extrapolationInputFile);
 my %extrapolationHash = %{$tempHashRef};													# extrapolation fit values
 my %dateRangeHash = %{$dateRangeHashRef};													# date range values
 my $word1 = "start";
 my $word2 = "end";
 my $startDate = $dateRangeHash{$word1};
 my $endDate = $dateRangeHash{$word2};
+print warninglog "startdate: $startDate\tenddate: $endDate\tr2: $r2Test\tBEPorTemp: $BEPorTemp\n";
 
 # Collect files that are flux logs and store data in flux
 opendir(DIR, $logDirectory) or die "cannot open dir $logDirectory: $!";
@@ -723,8 +827,6 @@ print arrheniusfits "element\tdate\tamplitude\tactivtation energy (eV)\tR^2\n";
 print arrheniusfitsfiltered "element\tdate\tamplitude\tactivtation energy (eV)\tR^2\n";
 print extrapolationoutputfiltered "element\tdate\ttest temp/valve position\ttest BEP\tR^2\ta\tb\tsublimator temp (C)\tcracker temp (C)\n";
 
-my $r2Test = 0.985;
-
 # Loop through each element, alphabetically
 foreach $element (sort keys %fluxLogData){
 
@@ -764,60 +866,126 @@ foreach $element (sort keys %fluxLogData){
 		}
 		
 		my $sizeTArray = scalar(@curValveTemp);													# use to check that there are multiple data points before performing regression
-		
+		my $r2;
 		
 		# If As or Sb, use linear extrapolation to get desired valve position
 		if(($element =~ m/[AS][sb]/) and ($sizeTArray >1) ){									
-			
+					
+			my $testBEP;		
+			my $testValveTemp;
+					
 			# Redundent, but keeping for future testing
 			my $subTemp = $fluxLogData{$element}{$fileDate}{"sublimator"};
 			my $crackerTemp = $fluxLogData{$element}{$fileDate}{"cracker"};
+				
+			# Find BEP for some user-defined temperature for fitting
+			if ($BEPorTemp == 1) {			
 			
-			# Perform linear interpolation
-			my $testValveTemp = $extrapolationHash{$element};									# get the test value that was collected from the input file that was put into hash
-			print fullregressionreport "========\nelement: $element\tfile date: $dateDash\n";
-			my ($a,$b,$r2) = LinearRegression(\@curValveTemp,\@curBEP);
-			my $testBEP = LinearInterpolation($a,$b,$testValveTemp);
-			
-			# Print/save data
-			print extrapolationoutput "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
-			print fullregressionreport "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
-			print "Element: $element\tDate: $dateDash\tTest Temp/Valve Position: $testValveTemp\tTest BEP: $testBEP\tr^2: $r2\ta: $a\tb: $b\tsubimlator temp: $subTemp\tcracker temp: $crackerTemp\n";
+				# Perform linear interpolation
+				my $testValveTemp = $extrapolationHash{$element};									# get the test value that was collected from the input file that was put into hash
+				print fullregressionreport "========\nelement: $element\tfile date: $dateDash\n";		
+				my ($a,$b,$r2) = LinearRegression(\@curValveTemp,\@curBEP);
+				my $testBEP = LinearInterpolation($a,$b,$testValveTemp);
+				
+				# Print/save data
+				print extrapolationoutput "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				print fullregressionreport "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				print "Element: $element\tDate: $dateDash\tTest Temp/Valve Position: $testValveTemp\tTest BEP: $testBEP\tr^2: $r2\ta: $a\tb: $b\tsubimlator temp: $subTemp\tcracker temp: $crackerTemp\n";
 		
-			if($r2 >= $r2Test){
-				print extrapolationoutputfiltered "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				if($r2 >= $r2Test){
+					print extrapolationoutputfiltered "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				}
+
 			}
-		
+			
+			if ($BEPorTemp == 2) {			
+			
+				# Perform linear interpolation
+				my $testBEP = $extrapolationHash{$element};									# get the test value that was collected from the input file that was put into hash
+				print fullregressionreport "========\nelement: $element\tfile date: $dateDash\n";
+				my ($a,$b,$r2) = LinearRegression(\@curValveTemp,\@curBEP);
+				my $testValveTemp = LinearInterpolationInverted($a,$b,$testBEP);
+				
+				# Print/save data
+				print extrapolationoutput "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				print fullregressionreport "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				print "Element: $element\tDate: $dateDash\tTest Temp/Valve Position: $testValveTemp\tTest BEP: $testBEP\tr^2: $r2\ta: $a\tb: $b\tsubimlator temp: $subTemp\tcracker temp: $crackerTemp\n";
+
+				if($r2 >= $r2Test){
+					print extrapolationoutputfiltered "$element\t$dateDash\t$testValveTemp\t$testBEP\t$r2\t$a\t$b\t$subTemp\t$crackerTemp\n";
+				}		
+			}		
 		}
 		
 		# If NOT As or Sb, use exponential extrapolation for Arrhenius fitting
 		elsif((($element =~ m/[ABGIEL][lianru]/) or ($element =~ m/B/)) and ($sizeTArray >1) ) {
+
+			my $KtoCTemp;
+			my $amp;
+			my $actE;
+			my $testBEP;		
+			my $testValveTemp;
+		
+			# Find BEP for some user-defined temperature for fitting
+			if ($BEPorTemp == 1) {
+				
+				# Clean up the temperature from T --> 1/T and Celcius to Kelvin
+				my $testValveTemp = $extrapolationHash{$element};									# get the test value that was collected from the input file that was put into hash
+				$testValveTemp = CelciusToKelvinScalar($testValveTemp);								# convert the test temp to Kelvin
+				my $kelvinTempRef = CelciusToKelvin(\@curValveTemp);
+				@curValveTemp = @{$kelvinTempRef};													# re-reference temp arrary converted from celcius to kelvin
+				my $tempRef = InvertArray(\@curValveTemp);											# invert  @curValveTemp for temps 1/T for Arrhenius fitting
+				@curValveTemp = @{$tempRef};														# re-reference the flipped temperature array
+				print fullregressionreport "========\nelement: $element\tfile date: $dateDash\n";
+				
+				# Perform exponential/Arrhenius fitting
+				my ($testBEP,$a,$b,$r2) = ExponentialInterpolation(\@curValveTemp,\@curBEP,$testValveTemp,$BEPorTemp);
+				my ($amp, $actE) = ArrheniusTerms($a,$b);
+				my $KtoCTemp = $testValveTemp - $KtoCConversion;									# convert the test temp back to degrees C from Kelvin
+				
+				# Print/save data
+				print extrapolationoutput "$element\t$dateDash\t$KtoCTemp\t$testBEP\t$r2\t$a\t$b\n";
+				print "Element: $element\tDate: $dateDash\tTest Temp/Valve Position: $KtoCTemp\tTest BEP: $testBEP\tr^2: $r2\ta: $a\tb:$b\n";
+				print fullregressionreport "Arrhenius fit terms -- amplitude: $amp\tactivation energy (eV): $actE\n";
+				print arrheniusfits "$element\t$dateDash\t$amp\t$actE\t$r2\n";
 			
-			# Clean up the temperature from T --> 1/T and Celcius to Kelvin
-			my $testValveTemp = $extrapolationHash{$element};									# get the test value that was collected from the input file that was put into hash
-			$testValveTemp = CelciusToKelvinScalar($testValveTemp);								# convert the test temp to Kelvin
-			my $kelvinTempRef = CelciusToKelvin(\@curValveTemp);
-			@curValveTemp = @{$kelvinTempRef};													# re-reference temp arrary converted from celcius to kelvin
-			my $tempRef = InvertArray(\@curValveTemp);											# invert  @curValveTemp for temps 1/T for Arrhenius fitting
-			@curValveTemp = @{$tempRef};														# re-reference the flipped temperature array
-			print fullregressionreport "========\nelement: $element\tfile date: $dateDash\n";
-			
-			# Perform exponential/Arrhenius fitting
-			my ($testBEP,$a,$b,$r2) = ExponentialInterpolation(\@curValveTemp,\@curBEP,$testValveTemp);
-			my ($amp, $actE) = ArrheniusTerms($a,$b);
-			my $KtoCTemp = $testValveTemp - $KtoCConversion;									# convert the test temp back to degrees C from Kelvin
-			
-			# Print/save data
-			print extrapolationoutput "$element\t$dateDash\t$KtoCTemp\t$testBEP\t$r2\t$a\t$b\n";
-			print "Element: $element\tDate: $dateDash\tTest Temp/Valve Position: $KtoCTemp\tTest BEP: $testBEP\tr^2: $r2\ta: $a\tb:$b\n";
-			print fullregressionreport "Arrhenius fit terms -- amplitude: $amp\tactivation energy (eV): $actE\n";
-			print arrheniusfits "$element\t$dateDash\t$amp\t$actE\t$r2\n";
-			
-			
-			if($r2 >= $r2Test){
-				print arrheniusfitsfiltered "$element\t$dateDash\t$amp\t$actE\t$r2\n";
-				print extrapolationoutputfiltered "$element\t$dateDash\t$KtoCTemp\t$testBEP\t$r2\t$a\t$b\n";
+				if($r2 >= $r2Test){
+					print arrheniusfitsfiltered "$element\t$dateDash\t$amp\t$actE\t$r2\n";
+					print extrapolationoutputfiltered "$element\t$dateDash\t$KtoCTemp\t$testBEP\t$r2\t$a\t$b\n";
+				}
+
 			}
+			
+			# Find temperature for some user-defined BEP for fitting
+			if ($BEPorTemp == 2) {
+				
+				my $testBEP = $extrapolationHash{$element};
+				
+				# Clean up the temperature from T --> 1/T and Celcius to Kelvin for extrapolation
+				my $kelvinTempRef = CelciusToKelvin(\@curValveTemp);
+				@curValveTemp = @{$kelvinTempRef};													# re-reference temp arrary converted from celcius to kelvin
+				my $tempRef = InvertArray(\@curValveTemp);											# invert  @curValveTemp for temps 1/T for Arrhenius fitting
+				@curValveTemp = @{$tempRef};														# re-reference the flipped temperature array
+				print fullregressionreport "========\nelement: $element\tfile date: $dateDash\n";
+				
+				# Perform exponential/Arrhenius fitting
+				my ($testValveTemp,$a,$b,$r2) = ExponentialInterpolation(\@curValveTemp,\@curBEP,$testBEP,$BEPorTemp);
+				my ($amp, $actE) = ArrheniusTerms($a,$b);
+				my $KtoCTemp = $testValveTemp - $KtoCConversion;
+				
+				# Print/save data
+				print extrapolationoutput "$element\t$dateDash\t$KtoCTemp\t$testBEP\t$r2\t$a\t$b\n";
+				print "Element: $element\tDate: $dateDash\tTest Temp/Valve Position: $KtoCTemp\tTest BEP: $testBEP\tr^2: $r2\ta: $a\tb:$b\n";
+				print fullregressionreport "Arrhenius fit terms -- amplitude: $amp\tactivation energy (eV): $actE\n";
+				print arrheniusfits "$element\t$dateDash\t$amp\t$actE\t$r2\n";
+
+				if($r2 >= $r2Test){
+					print arrheniusfitsfiltered "$element\t$dateDash\t$amp\t$actE\t$r2\n";
+					print extrapolationoutputfiltered "$element\t$dateDash\t$KtoCTemp\t$testBEP\t$r2\t$a\t$b\n";
+				}
+				
+			}		
+
 		}
 		
 		# Not enough data points to perform regression! Need more than one data point...

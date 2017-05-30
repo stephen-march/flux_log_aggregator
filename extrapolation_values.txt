@@ -12,6 +12,10 @@
 # The r2 value is the R^2 regression fitting lower limit. It is used to save data that produces regressions
 # that are greater than or equal to the r2 value. 
 #
+# The BEPorTemp variable determines if you want to fit to a given temperature/valve position or to a BEP.
+# For example, selecting Temp uses the user-defined BEP values to find a particular cell/cracker's
+# temperature/valve position at that corresponding BEP.
+#
 # If you decide to add any new elements, the regex commands in the flux aggregator script must be updated and
 # you must pick the type of curve fitting (exponential vs. linear) to perform. This resides in the
 # 'printing a hash and curve fitting' section of the script.
@@ -24,20 +28,33 @@ End date = 20990101
 # Extrapolation limits
 r2 = 0.985
 
+# BEPorTemp ??? Must put either 'BEP' or 'Temp'
+BEPorTemp = Temp
+
 # As and Sb
 As valve position = 200.0
 Sb valve position = 200.0
+As flux = 1E-6
+Sb flux = 1E-6
 
 # Group IIIs
 Al temp = 1150.0
+Al flux = 1E-7
 B temp = 999.0
+B flux = 1E-7
 Ga temp = 1030.0
+Ga flux = 3E-7
 In temp = 900.0
+In flux = 3E-7
 
 # Bi
 Bi temp = 600.0
+Bi flux = 4E-8
 
 # rare earth
 Er temp = 1000.0
+Er flux = 1E-8
 La temp = 1000.0
+La flux = 5E-8
 Lu temp = 1000.0
+Lu flux = 5E-8
